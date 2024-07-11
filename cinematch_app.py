@@ -5,12 +5,22 @@ import random
 API_KEY = '5cb3d1d197734a71fc8826dbf5b2c29f'
 
 def get_movie_details(movie_id):
-    url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={API_KEY}&language=es-ES&append_to_response=credits"
+    url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={API_KEY}&language=es-ES&append_to_response=credits,release_dates"
     response = requests.get(url)
     if response.status_code == 200:
         data = response.json()
-        return data
-    return None
+        if 'release_dates' in data and 'results' in data['release_dates']:
+            # Buscar la clasificación de edad para los EE. UU. o devolver 'NR' si no está disponible
+            certification = next(
+                (release['certification'] for release in data['release_dates']['results']
+                    if release['iso_3166_1'] == 'US' and 'certification' in release),
+                'NR'
+            )
+        else:
+            certification = 'NR'  # No se encontró información de clasificación
+        return data, certification
+    return None, 'NR'
+
 
 def get_movie_recommendations(genre_id, year=None, page=1):
     url = f"https://api.themoviedb.org/3/discover/movie?api_key={API_KEY}&with_genres={genre_id}&language=es-ES&page={page}"
@@ -31,18 +41,19 @@ def get_movie_recommendations(genre_id, year=None, page=1):
         return []
 
 def display_movie_details(movie_id, title, overview, poster_path):
-    movie_details = get_movie_details(movie_id)
+    movie_details, certification = get_movie_details(movie_id)
     if movie_details:
         year = movie_details.get('release_date', '').split('-')[0]
         director = ', '.join([crew['name'] for crew in movie_details.get('credits', {}).get('crew', []) if crew['job'] == 'Director'])
         cast = ', '.join([cast['name'] for cast in movie_details.get('credits', {}).get('cast', [])[:3]])
-        
+
         with st.expander(f"{title} ({year})"):
-            st.image(f"https://image.tmdb.org/t/p/w500{poster_path}", width=300)
+            st.markdown(f"<div style='text-align: center;'><img src='https://image.tmdb.org/t/p/w500{poster_path}' width='300'></div>", unsafe_allow_html=True)
             st.write("Descripción:", overview)
             st.write(f"Año: {year}")
             st.write(f"Director: {director}")
             st.write(f"Reparto principal: {cast}")
+            st.write(f"Clasificación: {certification}")
             rating = st.slider(f'Califica {title}:', 1, 5, 3)
             st.write(f'Has calificado {title} con {rating} estrellas.')
     else:
@@ -58,7 +69,8 @@ def main():
         "Drama": 18,
         "Terror": 27,
         "Ciencia Ficción": 878,
-        "Documental": 99
+        "Documental": 99,
+        "Infantil": 10751
     }
     genre = st.selectbox("Elige tu género favorito", options=list(genre_options.keys()))
     years = ["Random"] + [str(year) for year in range(2024, 1899, -1)]
@@ -82,7 +94,7 @@ def main():
 
     st.write("## Cómo Funciona")
     st.write("""
-    CineMatch utiliza la API de TMDB para obtener datos actualizados sobre películas y ofrecer recomendaciones basadas en tus preferencias de género y año de estreno. Las películas mostradas están garantizadas para tener información en español o inglés.
+    CineMatch utiliza la API de TMDB para obtener datos actualizados sobre películas y ofrecer recomendaciones basadas en tus preferencias de género y año de estreno. Las películas mostradas están garantizadas para tener información en español o inglés, y se adecuan a todas las edades según su clasificación.
     """)
 
 if __name__ == "__main__":
